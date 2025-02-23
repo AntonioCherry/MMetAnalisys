@@ -1,32 +1,59 @@
+import joblib
 import pandas as pd
 
-df = pd.read_csv("dataset.csv", sep=",")  # Usa sep=";" se i dati non si separano beneù
-pd.set_option('display.max_columns', None)
+# 📌 1️⃣ Carica il modello e gli encoder salvati
+model = joblib.load("modello_meta.pkl")
+encoder = joblib.load("one_hot_encoder.pkl")
+label_encoder = joblib.load("label_encoder_archetype.pkl")  # Carica il LabelEncoder di Archetype
 
-# Rimozione colonna Card Text
-df.drop(columns=['Card Text'], inplace=True)
+# 📌 2️⃣ Carica i nuovi dati per le previsioni
+future_data = pd.read_csv("dataset_ml.csv")
 
-# Visualizza le prime righe del dataset
-print(df.head().to_string(index=False))
+# 📌 3️⃣ Preprocessare i dati futuri come quelli di addestramento
+categorical_columns = ['Main/Sideboard', 'Mana Cost', 'Type Line', 'Rarity']
+for column in categorical_columns:
+    future_data[column] = future_data[column].fillna('Unknown')  # Gestisci i valori mancanti
 
-# Selezionare solo le colonne numeriche
-colonne_numeriche = df.select_dtypes(include=['float64', 'int64']).columns
+# 📌 4️⃣ Rimuovi la colonna "Archetype" se presente
+future_data = future_data.drop(columns=['Archetype'], errors='ignore')
 
-# Imputare i valori mancanti con la media per ogni colonna numerica
-df[colonne_numeriche] = df[colonne_numeriche].apply(lambda x: x.fillna(x.mean()), axis=0)
+# 📌 5️⃣ Codifica le nuove colonne categoriche con l'encoder salvato
+encoded_future_data = encoder.transform(future_data[categorical_columns])
+encoded_future_df = pd.DataFrame(encoded_future_data, columns=encoder.get_feature_names_out(categorical_columns))
 
-# Selezionare solo le colonne non numeriche (di tipo 'object' o 'category')
-colonne_non_numeriche = df.select_dtypes(include=['object', 'category']).columns
+# 📌 6️⃣ Aggiungi le colonne codificate ai dati futuri e rimuovi le originali
+future_data = pd.concat([future_data, encoded_future_df], axis=1)
+future_data = future_data.drop(columns=categorical_columns)
 
-# Imputare i valori mancanti con la moda per ogni colonna non numerica
-df[colonne_non_numeriche] = df[colonne_non_numeriche].apply(lambda x: x.fillna(x.mode()[0]), axis=0)
+# 📌 7️⃣ Aggiungi la colonna "Archetype_encoded" (per evitare il mismatch delle colonne)
+# Se non hai dati per Archetype_encoded, puoi aggiungere una colonna con valori di default (es. 0)
+future_data['Archetype_encoded'] = 0  # Aggiungi la colonna con valori fittizi
 
-# Stampare il DataFrame per verificare l'imputazione
-print(df.head())
+# 📌 8️⃣ Assicurati che future_data abbia le stesse colonne del training
+df_train = pd.read_csv("dataset_ml.csv")
+df_encoded_train = encoder.transform(df_train[categorical_columns])
+encoded_train_df = pd.DataFrame(df_encoded_train, columns=encoder.get_feature_names_out(categorical_columns))
 
-# Identificare le colonne con valori mancanti
-colonne_con_mancanti = df.columns[df.isna().sum() > 0]
+X_train = df_train.drop(columns=categorical_columns + ['Archetype'], errors='ignore')
+X_train = pd.concat([X_train, encoded_train_df], axis=1)
+training_columns = X_train.columns.tolist()
 
-# Stampare il nome delle colonne con valori mancanti
-print("Colonne con valori mancanti:")
-print(colonne_con_mancanti)
+# Aggiungi le colonne mancanti con 0 e riordina
+missing_cols = set(training_columns) - set(future_data.columns)
+for col in missing_cols:
+    future_data[col] = 0
+future_data = future_data[training_columns]
+
+# 📌 9️⃣ Fai le previsioni sui dati futuri
+future_predictions = model.predict(future_data)
+
+# 📌 🔟 Decodifica le previsioni numeriche in archetipi testuali
+future_predictions_text = label_encoder.inverse_transform(future_predictions)
+
+# 📌 🔟 Visualizza le previsioni
+print("Etichette numeriche previste:", future_predictions)
+print("Etichette testuali corrispondenti:", future_predictions_text)
+
+# 📌 🔟 Visualizza le previsioni testuali
+print("Previsioni sui dati futuri (in formato testuale):")
+print(future_predictions_text)
