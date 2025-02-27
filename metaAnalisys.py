@@ -1,6 +1,9 @@
 import joblib
 import pandas as pd
 
+# Author: Antonio Cersuo
+# Creation date: 23/02/2025
+
 # 📌 1️⃣ Carica il modello e gli encoder salvati
 model = joblib.load("modello_meta.pkl")
 encoder = joblib.load("one_hot_encoder.pkl")

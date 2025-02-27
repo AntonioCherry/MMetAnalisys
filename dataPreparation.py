@@ -2,6 +2,9 @@ import pandas as pd
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 import joblib
 
+# Author: Antonio Cersuo
+# Creation date: 23/02/2025
+
 # 📌 1️⃣ Carica il dataset pulito
 df = pd.read_csv("dataset_pulito.csv")
 
