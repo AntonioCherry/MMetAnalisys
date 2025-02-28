@@ -1,62 +1,132 @@
-import joblib
 import pandas as pd
+import joblib
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import StratifiedKFold
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, accuracy_score, recall_score, precision_score, f1_score, classification_report
+from sklearn.metrics import balanced_accuracy_score
 
-# Author: Antonio Cersuo
-# Creation date: 23/02/2025
-
-# 📌 1️⃣ Carica il modello e gli encoder salvati
-model = joblib.load("modello_meta.pkl")
-encoder = joblib.load("one_hot_encoder.pkl")
-label_encoder = joblib.load("label_encoder_archetype.pkl")  # Carica il LabelEncoder di Archetype
-
-# 📌 2️⃣ Carica i nuovi dati per le previsioni
-future_data = pd.read_csv("dataset_ml.csv")
-
-# 📌 3️⃣ Preprocessare i dati futuri come quelli di addestramento
-categorical_columns = ['Main/Sideboard', 'Mana Cost', 'Type Line', 'Rarity']
-for column in categorical_columns:
-    future_data[column] = future_data[column].fillna('Unknown')  # Gestisci i valori mancanti
-
-# 📌 4️⃣ Rimuovi la colonna "Archetype" se presente
-future_data = future_data.drop(columns=['Archetype'], errors='ignore')
-
-# 📌 5️⃣ Codifica le nuove colonne categoriche con l'encoder salvato
-encoded_future_data = encoder.transform(future_data[categorical_columns])
-encoded_future_df = pd.DataFrame(encoded_future_data, columns=encoder.get_feature_names_out(categorical_columns))
-
-# 📌 6️⃣ Aggiungi le colonne codificate ai dati futuri e rimuovi le originali
-future_data = pd.concat([future_data, encoded_future_df], axis=1)
-future_data = future_data.drop(columns=categorical_columns)
-
-# 📌 7️⃣ Aggiungi la colonna "Archetype_encoded" (per evitare il mismatch delle colonne)
-# Se non hai dati per Archetype_encoded, puoi aggiungere una colonna con valori di default (es. 0)
-future_data['Archetype_encoded'] = 0  # Aggiungi la colonna con valori fittizi
-
-# 📌 8️⃣ Assicurati che future_data abbia le stesse colonne del training
+# 📌 Carica i dati di training
 df_train = pd.read_csv("dataset_ml.csv")
+
+# 📌 Identifica le colonne categoriche e la colonna target
+categorical_columns = ['Main/Sideboard', 'Mana Cost', 'Type Line', 'Rarity']
+target_column = 'Archetype'
+
+# 📌 Carica il LabelEncoder per Archetype
+label_encoder = joblib.load("label_encoder_archetype.pkl")
+
+# 📌 Codifica le colonne categoriche
+encoder = joblib.load("one_hot_encoder.pkl")
 df_encoded_train = encoder.transform(df_train[categorical_columns])
 encoded_train_df = pd.DataFrame(df_encoded_train, columns=encoder.get_feature_names_out(categorical_columns))
 
-X_train = df_train.drop(columns=categorical_columns + ['Archetype'], errors='ignore')
+# 📌 Prepara il dataset
+X_train = df_train.drop(columns=categorical_columns + [target_column], errors='ignore')
 X_train = pd.concat([X_train, encoded_train_df], axis=1)
-training_columns = X_train.columns.tolist()
+y_train = label_encoder.transform(df_train[target_column])  # Trasforma il target in numerico
 
-# Aggiungi le colonne mancanti con 0 e riordina
-missing_cols = set(training_columns) - set(future_data.columns)
-for col in missing_cols:
-    future_data[col] = 0
-future_data = future_data[training_columns]
+# 📌 Imposta il numero di fold
+k = 10  # Puoi modificare il numero di fold
+skf = StratifiedKFold(n_splits=k, shuffle=True, random_state=42)
 
-# 📌 9️⃣ Fai le previsioni sui dati futuri
-future_predictions = model.predict(future_data)
+# 📌 Inizializza il classificatore
+classifier = RandomForestClassifier(random_state=42)
 
-# 📌 🔟 Decodifica le previsioni numeriche in archetipi testuali
-future_predictions_text = label_encoder.inverse_transform(future_predictions)
+# 📌 Analizza la distribuzione delle classi nei fold
+fold_distributions = []
+y_preds = []
+y_true = []
 
-# 📌 🔟 Visualizza le previsioni
-print("Etichette numeriche previste:", future_predictions)
-print("Etichette testuali corrispondenti:", future_predictions_text)
+for fold_idx, (train_idx, test_idx) in enumerate(skf.split(X_train, y_train), start=1):
+    X_train_fold, X_test_fold = X_train.iloc[train_idx], X_train.iloc[test_idx]
+    y_train_fold, y_test_fold = y_train[train_idx], y_train[test_idx]
 
-# 📌 🔟 Visualizza le previsioni testuali
-print("Previsioni sui dati futuri (in formato testuale):")
-print(future_predictions_text)
+    # Allena il modello
+    classifier.fit(X_train_fold, y_train_fold)
+
+    # Predizioni sui dati di test
+    y_pred_fold = classifier.predict(X_test_fold)
+
+    # Memorizza le etichette vere e le predizioni per la confusion matrix
+    y_true.extend(y_test_fold)
+    y_preds.extend(y_pred_fold)
+
+    # Calcola la distribuzione delle classi nel fold
+    class_counts = np.bincount(y_test_fold, minlength=len(label_encoder.classes_))
+    fold_distributions.append(class_counts)
+
+# 📌 Calcola e visualizza la confusion matrix
+cm = confusion_matrix(y_true, y_preds, labels=range(len(label_encoder.classes_)))
+cm_display = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=label_encoder.classes_)
+
+# 📌 Stampa le etichette predette nel terminale
+print("\n📊 Etichette predette per ogni fold:")
+predicted_labels = label_encoder.inverse_transform(y_preds)
+for i, label in enumerate(predicted_labels[:10]):  # Mostra solo le prime 10 per brevità
+    print(f"Predizione {i+1}: {label}")
+
+# 📌 Stampa la Confusion Matrix nel terminale
+print("\n📊 Confusion Matrix:")
+print(cm)
+
+# 📌 Converti in DataFrame per la visualizzazione della distribuzione dei fold
+fold_distribution_df = pd.DataFrame(fold_distributions, columns=label_encoder.classes_)
+fold_distribution_df.index = [f"Fold {i+1}" for i in range(k)]
+
+# 📌 Stampa la distribuzione delle classi nei vari fold
+print("\n📊 Distribuzione delle classi in ciascun Fold:")
+print(fold_distribution_df)
+
+# 📌 Visualizza la distribuzione tramite heatmap
+plt.figure(figsize=(12, 6))
+sns.heatmap(fold_distribution_df.T, annot=True, fmt="d", cmap="Blues", linewidths=0.5)
+plt.xlabel("Fold")
+plt.ylabel("Archetype")
+plt.title("Distribuzione delle classi nei diversi Fold (Stratified K-Fold)")
+plt.show()
+
+# 📌 Visualizza la Confusion Matrix
+cm_display.plot(cmap="Blues")
+plt.title("Confusion Matrix")
+plt.xticks(rotation=45, ha='right')  # Ruota le etichette sull'asse x per evitare sovrapposizioni
+plt.yticks(rotation=0)  # Mantieni le etichette sull'asse y orizzontali
+plt.show()
+
+# 📌 Calcola le metriche
+accuracy = accuracy_score(y_true, y_preds)
+recall = recall_score(y_true, y_preds, average='weighted')
+precision = precision_score(y_true, y_preds, average='weighted')
+f1 = f1_score(y_true, y_preds, average='weighted')
+
+# 📌 Stampa le metriche
+print("\n📊 Metriche di valutazione:")
+print(f"Accuracy: {accuracy:.4f}")
+print(f"Recall: {recall:.4f}")
+print(f"Precision: {precision:.4f}")
+print(f"F1-Score: {f1:.4f}")
+
+# 📌 Stampa il report di classificazione
+print("\n📊 Report di Classificazione:")
+print(classification_report(y_true, y_preds, target_names=label_encoder.classes_))
+
+# 📌 Converti il report di classificazione in un DataFrame
+report = classification_report(y_true, y_preds, target_names=label_encoder.classes_, output_dict=True)
+report_df = pd.DataFrame(report).transpose()
+
+# 📌 Stampa il report di classificazione come tabella
+print("\n📊 Report di Classificazione (Tabella):")
+print(report_df)
+
+# 📌 Visualizza il report di classificazione come heatmap
+plt.figure(figsize=(10, 6))
+sns.heatmap(report_df.iloc[:-1, :].astype(float), annot=True, fmt=".2f", cmap="Blues", cbar=True)
+plt.title("Report di Classificazione (Heatmap)")
+plt.xlabel("Metriche")
+plt.ylabel("Classi")
+plt.show()
+
+balanced_accuracy = balanced_accuracy_score(y_true, y_preds)
+print(f"Balanced Accuracy: {balanced_accuracy:.4f}")
