@@ -2,76 +2,72 @@ import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import StratifiedKFold
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import OneHotEncoder, LabelEncoder
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, classification_report, confusion_matrix
 import joblib
 
 # 📌 1️⃣ Carica il dataset
-df = pd.read_csv("dataset_ml.csv")
-print("\n📊 Archetipi unici nel dataset:")
-print(df['Archetype'].value_counts())
+df = pd.read_csv("Datasets/dataset_train.csv")
 
-# 📌 2️⃣ Creare un encoder per le colonne categoriche
-encoder = OneHotEncoder(sparse_output=False, drop='first')
-
-# 📌 3️⃣ Trasforma le colonne categoriche con l'encoder
+encoder = OneHotEncoder(sparse_output=False, drop='first', handle_unknown='ignore')
 categorical_columns = ['Main/Sideboard', 'Mana Cost', 'Type Line', 'Rarity']
 df_encoded = encoder.fit_transform(df[categorical_columns])
-
-# 📌 4️⃣ Converti il risultato in un DataFrame
 df_encoded = pd.DataFrame(df_encoded, columns=encoder.get_feature_names_out(categorical_columns))
-
-# 📌 5️⃣ Sostituisci le colonne originali nel DataFrame con quelle codificate
 df = df.drop(columns=categorical_columns)
 df = pd.concat([df, df_encoded], axis=1)
 
-# 📌 6️⃣ Codifica la colonna "Archetype" con LabelEncoder
 label_encoder = LabelEncoder()
 df['Archetype'] = label_encoder.fit_transform(df['Archetype'])
 
-# 📌 7️⃣ Definiamo feature (X) e target (y)
 X = df.drop(columns=['Archetype'])
 y = df['Archetype']
 
-# 📌 8️⃣ Suddividere in training e test set
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+k = 10  # Numero di fold
+skf = StratifiedKFold(n_splits=k, shuffle=True, random_state=42)
 
-# 📌 🔟 Creare e allenare il modello
-model = RandomForestClassifier(n_estimators=100, random_state=42)
-model.fit(X_train, y_train)
+y_true = []
+y_preds = []
 
-# 📌 1️⃣1️⃣ Valutazione del modello
-y_pred = model.predict(X_test)
+for train_idx, test_idx in skf.split(X, y):
+    X_train_fold, X_test_fold = X.iloc[train_idx], X.iloc[test_idx]
+    y_train_fold, y_test_fold = y.iloc[train_idx], y.iloc[test_idx]
 
-# 📌 🔹 Accuracy tradizionale
-accuracy = accuracy_score(y_test, y_pred)
-print(f"\n✅ Accuracy del modello: {accuracy:.4f}")
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    model.fit(X_train_fold, y_train_fold)
+    y_pred_fold = model.predict(X_test_fold)
 
-# 📌 🔹 Balanced Accuracy (più affidabile se il dataset è sbilanciato)
-balanced_acc = balanced_accuracy_score(y_test, y_pred)
-print(f"⚖️ Balanced Accuracy: {balanced_acc:.4f}")
+    y_true.extend(y_test_fold)
+    y_preds.extend(y_pred_fold)
 
-# 📌 🔹 Classification Report migliorato
-print("\n📊 Classification Report:")
-print(classification_report(y_test, y_pred, target_names=label_encoder.classes_))
+# 📌 Classification Report
+y_true = np.array(y_true)
+y_preds = np.array(y_preds)
+report = classification_report(y_true, y_preds, target_names=label_encoder.classes_, output_dict=True)
+report_df = pd.DataFrame(report).transpose()
 
-# 📌 🔹 Confusion Matrix con Heatmap
-cm = confusion_matrix(y_test, y_pred)
+plt.figure(figsize=(10, 6))
+sns.heatmap(report_df.iloc[:-1, :].astype(float), annot=True, fmt=".2f", cmap="Blues", cbar=True)
+plt.title("Report di Classificazione (Training Set)")
+plt.xlabel("Metriche")
+plt.ylabel("Classi")
+plt.show()
 
-plt.figure(figsize=(12, 8))
-sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=label_encoder.classes_, yticklabels=label_encoder.classes_)
-plt.xlabel("Predetto")
-plt.ylabel("Reale")
-plt.title("🔀 Confusion Matrix")
-plt.xticks(rotation=90)
+# 📌 Confusion Matrix
+cm = confusion_matrix(y_true, y_preds, labels=range(len(label_encoder.classes_)))
+plt.figure(figsize=(10, 6))
+sns.heatmap(cm, annot=True, fmt='d', cmap="Blues", xticklabels=label_encoder.classes_,
+            yticklabels=label_encoder.classes_)
+plt.title("Confusion Matrix (Training Set)")
+plt.xlabel("Predicted Label")
+plt.ylabel("True Label")
+plt.xticks(rotation=45, ha='right')
 plt.yticks(rotation=0)
 plt.show()
 
-# 📌 1️⃣2️⃣ Salvare il modello e gli encoder
-joblib.dump(model, "modello_meta.pkl")
-joblib.dump(encoder, "one_hot_encoder.pkl")
-joblib.dump(label_encoder, "label_encoder_archetype.pkl")
-
+# 📌 Salvataggio del modello
+joblib.dump(model, "Models/modello_meta.pkl")
+joblib.dump(encoder, "Encoders/one_hot_encoder.pkl")
+joblib.dump(label_encoder, "Encoders/label_encoder_archetype.pkl")
 print("\n✅ Modello e encoder salvati con successo!")
