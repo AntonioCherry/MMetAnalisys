@@ -8,7 +8,7 @@ from sklearn.preprocessing import OneHotEncoder, LabelEncoder
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, classification_report, confusion_matrix
 import joblib
 
-# 📌 1️⃣ Carica il dataset
+# Carica il dataset
 df = pd.read_csv("Datasets/dataset_train.csv")
 
 encoder = OneHotEncoder(sparse_output=False, drop='first', handle_unknown='ignore')
@@ -41,7 +41,7 @@ for train_idx, test_idx in skf.split(X, y):
     y_true.extend(y_test_fold)
     y_preds.extend(y_pred_fold)
 
-# 📌 Classification Report
+# Classification Report
 y_true = np.array(y_true)
 y_preds = np.array(y_preds)
 report = classification_report(y_true, y_preds, target_names=label_encoder.classes_, output_dict=True)
@@ -54,7 +54,7 @@ plt.xlabel("Metriche")
 plt.ylabel("Classi")
 plt.show()
 
-# 📌 Confusion Matrix
+# Confusion Matrix
 cm = confusion_matrix(y_true, y_preds, labels=range(len(label_encoder.classes_)))
 plt.figure(figsize=(10, 6))
 sns.heatmap(cm, annot=True, fmt='d', cmap="Blues", xticklabels=label_encoder.classes_,
@@ -66,7 +66,7 @@ plt.xticks(rotation=45, ha='right')
 plt.yticks(rotation=0)
 plt.show()
 
-# 📌 Salvataggio del modello
+# Salvataggio del modello
 joblib.dump(model, "Models/modello_meta.pkl")
 joblib.dump(encoder, "Encoders/one_hot_encoder.pkl")
 joblib.dump(label_encoder, "Encoders/label_encoder_archetype.pkl")

@@ -13,7 +13,7 @@ pd.set_option('display.max_columns', None)
 # Rimozione colonne non necessarie
 df.drop(columns=['Card Text', 'Date Posted', 'Mana Value', 'Colours', "Most Recent Printing"], inplace=True)
 
-# 1. Visualizzazione valori mancanti iniziali
+# Visualizzazione valori mancanti iniziali
 missing = df.isna().sum()
 present = len(df) - missing
 missing_df = pd.DataFrame({'Valori Mancanti': missing, 'Valori Presenti': present})
@@ -50,7 +50,7 @@ for col in colonne_categoriche:
 X = df.drop(columns=['Archetype'])
 y = df['Archetype']
 
-# Divisione train-test (ADASYN deve essere applicato solo sul train)
+# Divisione train-test 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y)
 
 # Applicare ADASYN solo alle classi selezionate
